@@ -1,0 +1,226 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSharedNaturindoWorkspace(workspaceId) {
+      return workspaceId == 'sentra-naturindo' || workspaceId == 'sentra-naturindo-2025';
+    }
+
+    function isBootstrapAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'mdspanjang@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isRestrictedViewer(workspaceId) {
+      return exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role == 'viewer';
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() && (
+        isBootstrapAdmin() ||
+        isSharedNaturindoWorkspace(workspaceId) ||
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid))
+      );
+    }
+
+    function isWorkspaceStaffOrAdmin(workspaceId) {
+      return isSignedIn() && !isRestrictedViewer(workspaceId) && (
+        isBootstrapAdmin() ||
+        isSharedNaturindoWorkspace(workspaceId) ||
+        (
+          exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role in ['admin', 'staff']
+        )
+      );
+    }
+
+    function isWorkspaceAdmin(workspaceId) {
+      return isSignedIn() && !isRestrictedViewer(workspaceId) && (
+        isBootstrapAdmin() ||
+        isSharedNaturindoWorkspace(workspaceId) ||
+        (
+          exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
+    }
+
+    // Validation Blueprints (Fleksibel terhadap timestamp klien maupun serverTimestamp)
+    function isValidTimestampOrString(val) {
+      return val is timestamp || val is string || val is number;
+    }
+
+    function isValidWorkspace(data) {
+      return data.keys().hasAll(['name', 'ownerId', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        isValidId(data.ownerId) &&
+        isValidTimestampOrString(data.createdAt) &&
+        isValidTimestampOrString(data.updatedAt);
+    }
+
+    function isValidMember(data, workspaceId, memberUid) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'workspaceId']) &&
+        data.uid == memberUid &&
+        isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.role is string && data.role in ['admin', 'staff', 'viewer'] &&
+        data.workspaceId == workspaceId;
+    }
+
+    function isValidOrder(data, workspaceId) {
+      return (!('workspaceId' in data) || data.workspaceId == workspaceId) &&
+        data.storeName is string && data.storeName.size() >= 1 && data.storeName.size() <= 200 &&
+        data.productsSold is string && data.productsSold.size() >= 1 && data.productsSold.size() <= 500 &&
+        data.quantity is number && data.quantity >= 1 && data.quantity <= 100000;
+    }
+
+    function isValidStock(data, workspaceId) {
+      return (!('workspaceId' in data) || data.workspaceId == workspaceId) &&
+        data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 80 &&
+        data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 200 &&
+        data.stockIn is number && data.stockIn >= 0 &&
+        data.stockOut is number && data.stockOut >= 0 &&
+        data.stockReady is number && data.stockReady >= 0;
+    }
+
+    function isValidActivity(data, workspaceId) {
+      return (!('workspaceId' in data) || data.workspaceId == workspaceId) &&
+        data.actionTitle is string && data.actionTitle.size() >= 1 && data.actionTitle.size() <= 300;
+    }
+
+    // Root Admins Collection
+    match /admins/{adminUid} {
+      allow read: if isSignedIn();
+      allow write: if isBootstrapAdmin();
+    }
+
+    // Root Workspaces Collection
+    match /workspaces/{workspaceId} {
+      // Semua akun yang login bisa membaca dan me-list workspace bersama
+      allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+
+      allow create: if isSignedIn() &&
+        isValidId(workspaceId) &&
+        isValidWorkspace(incoming()) &&
+        isWorkspaceStaffOrAdmin(workspaceId);
+
+      allow update: if isSignedIn() &&
+        isValidId(workspaceId) &&
+        isWorkspaceStaffOrAdmin(workspaceId);
+
+      allow delete: if false;
+
+      // Workspace Members Subcollection (RBAC: Hanya mdspanjang@gmail.com yang dapat mengubah Staff ke Admin)
+      match /members/{memberUid} {
+        allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+
+        allow create: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(memberUid) &&
+          isValidMember(incoming(), workspaceId, memberUid) &&
+          (
+            isBootstrapAdmin() ||
+            (request.auth.uid == memberUid && incoming().role == 'staff')
+          );
+
+        allow update: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(memberUid) &&
+          isValidMember(incoming(), workspaceId, memberUid) &&
+          (
+            isBootstrapAdmin() ||
+            (request.auth.uid == memberUid && incoming().role == existing().role)
+          );
+
+        allow delete: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(memberUid) &&
+          isBootstrapAdmin();
+      }
+
+      // Orders Subcollection
+      match /orders/{orderId} {
+        // Izinkan get & list untuk semua member tanpa terjebak filter resource.data
+        allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+
+        // Izinkan semua Gmail (staff/admin) membuat order tanpa terblokir perbedaan authorId/timestamp
+        allow create: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(orderId) &&
+          isValidOrder(incoming(), workspaceId) &&
+          isWorkspaceStaffOrAdmin(workspaceId);
+
+        allow update: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(orderId) &&
+          isValidOrder(incoming(), workspaceId) &&
+          (
+            isWorkspaceAdmin(workspaceId) ||
+            (
+              (!('verifiedCheck' in existing()) || existing().verifiedCheck == false) &&
+              isWorkspaceStaffOrAdmin(workspaceId)
+            )
+          );
+
+        allow delete: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(orderId) &&
+          isWorkspaceStaffOrAdmin(workspaceId);
+      }
+
+      // Stocks Subcollection
+      match /stocks/{stockId} {
+        allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+
+        allow create, update: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(stockId) &&
+          isValidStock(incoming(), workspaceId) &&
+          isWorkspaceStaffOrAdmin(workspaceId);
+
+        allow delete: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(stockId) &&
+          isWorkspaceAdmin(workspaceId);
+      }
+
+      // Activities Subcollection (Append-Only Audit Log)
+      match /activities/{activityId} {
+        allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+
+        allow create: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(activityId) &&
+          isValidActivity(incoming(), workspaceId) &&
+          isWorkspaceStaffOrAdmin(workspaceId);
+
+        allow update, delete: if false;
+      }
+    }
+  }
+}

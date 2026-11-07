@@ -1,0 +1,357 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrapAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'mdspanjang@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isRestrictedViewer(workspaceId) {
+      return exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role == 'viewer';
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() && (
+        isBootstrapAdmin() ||
+        workspaceId == 'sentra-naturindo' ||
+        workspaceId == 'sentra-naturindo-2025' ||
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid))
+      );
+    }
+
+    function isWorkspaceStaffOrAdmin(workspaceId) {
+      return isSignedIn() && !isRestrictedViewer(workspaceId) && (
+        isBootstrapAdmin() ||
+        workspaceId == 'sentra-naturindo' ||
+        workspaceId == 'sentra-naturindo-2025' ||
+        (
+          exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role in ['admin', 'staff']
+        )
+      );
+    }
+
+    function isWorkspaceAdmin(workspaceId) {
+      return isSignedIn() && !isRestrictedViewer(workspaceId) && (
+        isBootstrapAdmin() ||
+        workspaceId == 'sentra-naturindo' ||
+        workspaceId == 'sentra-naturindo-2025' ||
+        (
+          exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
+    }
+
+    // Validation Blueprints
+    function isValidWorkspace(data) {
+      return data.keys().hasAll(['name', 'ownerId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['name', 'ownerId', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        isValidId(data.ownerId) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidMember(data, workspaceId, memberUid) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'workspaceId', 'addedByUid', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'role', 'workspaceId', 'addedByUid', 'createdAt', 'updatedAt']) &&
+        data.uid == memberUid &&
+        isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.role is string && data.role in ['admin', 'staff', 'viewer'] &&
+        data.workspaceId == workspaceId &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.addedByUid) &&
+        data.addedByUid == request.auth.uid &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidOrder(data, workspaceId) {
+      return data.keys().hasAll([
+          'workspaceId', 'orderDate', 'storeName', 'marketplace', 'ownerName',
+          'drivePrintUrl', 'productsSold', 'quantity', 'checklistComplete',
+          'shippingStatus', 'dropoffDate', 'notes', 'disbursementDate',
+          'disbursedToBri', 'disbursementStatus', 'disbursementProof',
+          'verifiedCheck', 'authorId', 'updatedByName', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'workspaceId', 'orderDate', 'storeName', 'marketplace', 'ownerName',
+          'drivePrintUrl', 'productsSold', 'quantity', 'checklistComplete',
+          'shippingStatus', 'dropoffDate', 'notes', 'disbursementDate',
+          'disbursedToBri', 'disbursementStatus', 'disbursementProof',
+          'verifiedCheck', 'authorId', 'updatedByName', 'createdAt', 'updatedAt'
+        ]) &&
+        data.workspaceId == workspaceId &&
+        isValidId(data.workspaceId) &&
+        data.orderDate is string && data.orderDate.size() >= 1 && data.orderDate.size() <= 50 &&
+        data.storeName is string && data.storeName.size() >= 1 && data.storeName.size() <= 120 &&
+        data.marketplace is string && data.marketplace in ['Shopee', 'Lazada', 'Tokopedia/Tokped', 'TikTok Shop', 'Offline/Lainnya'] &&
+        data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 80 &&
+        data.drivePrintUrl is string && data.drivePrintUrl.size() <= 500 &&
+        data.productsSold is string && data.productsSold.size() >= 1 && data.productsSold.size() <= 250 &&
+        data.quantity is number && data.quantity >= 1 && data.quantity <= 100000 &&
+        data.checklistComplete is bool &&
+        data.shippingStatus is string && data.shippingStatus in ['Package Sent', 'Diproses', 'Siap Kirim', 'Retur', 'Dibatalkan'] &&
+        data.dropoffDate is string && data.dropoffDate.size() <= 60 &&
+        data.notes is string && data.notes.size() <= 250 &&
+        data.disbursementDate is string && data.disbursementDate.size() <= 80 &&
+        data.disbursedToBri is bool &&
+        data.disbursementStatus is string && data.disbursementStatus in ['Sudah cair', 'Belum cair', 'Retur'] &&
+        data.disbursementProof is string && data.disbursementProof.size() <= 500 &&
+        data.verifiedCheck is bool &&
+        isValidId(data.authorId) &&
+        data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 100 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStock(data, workspaceId) {
+      return data.keys().hasAll([
+          'workspaceId', 'sku', 'productName', 'category', 'stockIn',
+          'stockOut', 'stockReady', 'minThreshold', 'unit', 'lastRestockDate',
+          'authorId', 'updatedByName', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'workspaceId', 'sku', 'productName', 'category', 'stockIn',
+          'stockOut', 'stockReady', 'minThreshold', 'unit', 'lastRestockDate',
+          'authorId', 'updatedByName', 'createdAt', 'updatedAt'
+        ]) &&
+        data.workspaceId == workspaceId &&
+        isValidId(data.workspaceId) &&
+        data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 40 &&
+        data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 120 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+        data.stockIn is number && data.stockIn >= 0 && data.stockIn <= 1000000 &&
+        data.stockOut is number && data.stockOut >= 0 && data.stockOut <= 1000000 &&
+        data.stockReady is number && data.stockReady >= 0 && data.stockReady <= 1000000 &&
+        data.stockReady == data.stockIn - data.stockOut &&
+        data.minThreshold is number && data.minThreshold >= 0 && data.minThreshold <= 100000 &&
+        data.unit is string && data.unit.size() >= 1 && data.unit.size() <= 30 &&
+        data.lastRestockDate is string && data.lastRestockDate.size() <= 50 &&
+        isValidId(data.authorId) &&
+        data.updatedByName is string && data.updatedByName.size() >= 1 && data.updatedByName.size() <= 100 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidActivity(data, workspaceId) {
+      return data.keys().hasAll([
+          'workspaceId', 'category', 'actionTitle', 'detail',
+          'actorUid', 'actorName', 'actorRole', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'workspaceId', 'category', 'actionTitle', 'detail',
+          'actorUid', 'actorName', 'actorRole', 'createdAt'
+        ]) &&
+        data.workspaceId == workspaceId &&
+        isValidId(data.workspaceId) &&
+        data.category is string && data.category in ['order', 'stock', 'access'] &&
+        data.actionTitle is string && data.actionTitle.size() >= 1 && data.actionTitle.size() <= 160 &&
+        data.detail is string && data.detail.size() >= 1 && data.detail.size() <= 400 &&
+        isValidId(data.actorUid) &&
+        data.actorUid == request.auth.uid &&
+        data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 100 &&
+        data.actorRole is string && data.actorRole in ['admin', 'staff', 'viewer'] &&
+        data.createdAt is timestamp;
+    }
+
+    // Root Workspaces Collection
+    match /workspaces/{workspaceId} {
+      allow get: if isSignedIn() && isValidId(workspaceId) && isWorkspaceMember(workspaceId);
+      allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+        isValidId(workspaceId) &&
+        isValidWorkspace(incoming()) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isWorkspaceStaffOrAdmin(workspaceId);
+
+      allow update: if isSignedIn() &&
+        isValidId(workspaceId) &&
+        isValidWorkspace(incoming()) &&
+        (incoming().ownerId == existing().ownerId || incoming().ownerId == request.auth.uid) &&
+        (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time) &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'ownerId', 'createdAt', 'updatedAt']) &&
+        isWorkspaceAdmin(workspaceId);
+
+      allow delete: if false;
+
+      // Workspace Members Subcollection (RBAC)
+      match /members/{memberUid} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(memberUid) &&
+          (request.auth.uid == memberUid || isWorkspaceMember(workspaceId));
+        allow list: if isSignedIn() && existing().workspaceId == workspaceId;
+
+        allow create: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(memberUid) &&
+          isValidMember(incoming(), workspaceId, memberUid) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceAdmin(workspaceId);
+
+        allow update: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(memberUid) &&
+          isValidMember(incoming(), workspaceId, memberUid) &&
+          incoming().uid == existing().uid &&
+          incoming().workspaceId == existing().workspaceId &&
+          (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time) &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role', 'addedByUid', 'createdAt', 'updatedAt']) &&
+          isWorkspaceAdmin(workspaceId);
+
+        allow delete: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(memberUid) &&
+          isWorkspaceAdmin(workspaceId);
+      }
+
+      // Orders Subcollection
+      match /orders/{orderId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(orderId) && isWorkspaceMember(workspaceId);
+        allow list: if isSignedIn() && existing().workspaceId == workspaceId;
+
+        allow create: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(orderId) &&
+          isValidOrder(incoming(), workspaceId) &&
+          incoming().authorId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceStaffOrAdmin(workspaceId);
+
+        allow update: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(orderId) &&
+          isValidOrder(incoming(), workspaceId) &&
+          incoming().workspaceId == existing().workspaceId &&
+          (incoming().authorId == existing().authorId || incoming().authorId == request.auth.uid) &&
+          (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time) &&
+          incoming().updatedAt == request.time &&
+          (
+            // Tier 1: Admin full update (including BRI disbursement verification & terminal states)
+            (
+              isWorkspaceAdmin(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'orderDate', 'storeName', 'marketplace', 'ownerName',
+                'drivePrintUrl', 'productsSold', 'quantity', 'checklistComplete',
+                'shippingStatus', 'dropoffDate', 'notes', 'disbursementDate',
+                'disbursedToBri', 'disbursementStatus', 'disbursementProof',
+                'verifiedCheck', 'authorId', 'updatedByName', 'createdAt', 'updatedAt'
+              ])
+            ) ||
+            // Tier 2: Staff operational update (only if not yet locked by final verifiedCheck)
+            (
+              existing().verifiedCheck == false &&
+              isWorkspaceStaffOrAdmin(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'orderDate', 'storeName', 'marketplace', 'ownerName',
+                'drivePrintUrl', 'productsSold', 'quantity', 'checklistComplete',
+                'shippingStatus', 'dropoffDate', 'notes', 'authorId', 'updatedByName', 'createdAt', 'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(orderId) &&
+          isWorkspaceStaffOrAdmin(workspaceId);
+      }
+
+      // Stocks Subcollection
+      match /stocks/{stockId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(stockId) && isWorkspaceMember(workspaceId);
+        allow list: if isSignedIn() && existing().workspaceId == workspaceId;
+
+        allow create: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(stockId) &&
+          isValidStock(incoming(), workspaceId) &&
+          incoming().authorId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isWorkspaceStaffOrAdmin(workspaceId);
+
+        allow update: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(stockId) &&
+          isValidStock(incoming(), workspaceId) &&
+          incoming().workspaceId == existing().workspaceId &&
+          (incoming().authorId == existing().authorId || incoming().authorId == request.auth.uid) &&
+          (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time) &&
+          incoming().updatedAt == request.time &&
+          (
+            // Tier 1: Admin can modify product metadata, thresholds, and stock counts
+            (
+              isWorkspaceAdmin(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'sku', 'productName', 'category', 'stockIn', 'stockOut',
+                'stockReady', 'minThreshold', 'unit', 'lastRestockDate',
+                'authorId', 'updatedByName', 'createdAt', 'updatedAt'
+              ])
+            ) ||
+            // Tier 2: Staff can only record stock movement (stockIn, stockOut, stockReady, lastRestockDate)
+            (
+              isWorkspaceStaffOrAdmin(workspaceId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'stockIn', 'stockOut', 'stockReady', 'lastRestockDate',
+                'authorId', 'updatedByName', 'createdAt', 'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(stockId) &&
+          isWorkspaceAdmin(workspaceId);
+      }
+
+      // Activities Subcollection (Append-Only Audit Log)
+      match /activities/{activityId} {
+        allow get: if isSignedIn() && isValidId(workspaceId) && isValidId(activityId) && isWorkspaceMember(workspaceId);
+        allow list: if isSignedIn() && existing().workspaceId == workspaceId;
+
+        allow create: if isSignedIn() &&
+          isValidId(workspaceId) &&
+          isValidId(activityId) &&
+          isValidActivity(incoming(), workspaceId) &&
+          incoming().createdAt == request.time &&
+          isWorkspaceStaffOrAdmin(workspaceId);
+
+        allow update, delete: if false;
+      }
+    }
+  }
+}

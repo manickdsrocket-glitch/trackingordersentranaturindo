@@ -1,0 +1,384 @@
+{
+  "entities": {
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Shared operational workspace for Sentra Naturindo Order Tracking and Stock Management.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name of the workspace",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the workspace creator",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": ["name", "ownerId", "createdAt", "updatedAt"]
+    },
+    "WorkspaceMember": {
+      "title": "WorkspaceMember",
+      "description": "Multi-user role and access control record within a workspace (no PII stored).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the member",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name or alias of the team member",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "role": {
+          "type": "string",
+          "description": "Access level granted to the user",
+          "enum": ["admin", "staff", "viewer"]
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "Parent workspace ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "addedByUid": {
+          "type": "string",
+          "description": "UID of the user who created or updated this membership",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": ["uid", "displayName", "role", "workspaceId", "addedByUid", "createdAt", "updatedAt"]
+    },
+    "OrderRecord": {
+      "title": "OrderRecord",
+      "description": "Order tracking entry matching the Sentra Naturindo Google Sheet columns.",
+      "type": "object",
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orderDate": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "storeName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "marketplace": {
+          "type": "string",
+          "enum": ["Shopee", "Lazada", "Tokopedia/Tokped", "TikTok Shop", "Offline/Lainnya"]
+        },
+        "ownerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "drivePrintUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "productsSold": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "quantity": {
+          "type": "number"
+        },
+        "checklistComplete": {
+          "type": "boolean"
+        },
+        "shippingStatus": {
+          "type": "string",
+          "enum": ["Package Sent", "Diproses", "Siap Kirim", "Retur", "Dibatalkan"]
+        },
+        "noPemesanan": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Nomor Pemesanan / Order ID hasil scan atau input manual"
+        },
+        "keterangan": {
+          "type": "string",
+          "maxLength": 250,
+          "description": "Keterangan atau catatan khusus pengiriman order"
+        },
+        "dropoffDate": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 250
+        },
+        "disbursementDate": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "disbursedToBri": {
+          "type": "boolean"
+        },
+        "disbursementStatus": {
+          "type": "string",
+          "enum": ["Sudah cair", "Belum cair", "Retur"]
+        },
+        "disbursementProof": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "verifiedCheck": {
+          "type": "boolean"
+        },
+        "authorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "orderDate",
+        "storeName",
+        "marketplace",
+        "ownerName",
+        "drivePrintUrl",
+        "productsSold",
+        "quantity",
+        "checklistComplete",
+        "shippingStatus",
+        "dropoffDate",
+        "notes",
+        "disbursementDate",
+        "disbursedToBri",
+        "disbursementStatus",
+        "disbursementProof",
+        "verifiedCheck",
+        "authorId",
+        "updatedByName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StockItem": {
+      "title": "StockItem",
+      "description": "Inventory item tracking Ready stock, Outbound (Keluar) stock, and Minimum Threshold alerts without dummy or trial columns.",
+      "type": "object",
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sku": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "productName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "stockIn": {
+          "type": "number"
+        },
+        "stockOut": {
+          "type": "number"
+        },
+        "stockReady": {
+          "type": "number"
+        },
+        "minThreshold": {
+          "type": "number"
+        },
+        "expTercepat": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "expTerlama": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "lastRestockDate": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "authorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedByName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "sku",
+        "productName",
+        "category",
+        "stockIn",
+        "stockOut",
+        "stockReady",
+        "minThreshold",
+        "unit",
+        "lastRestockDate",
+        "authorId",
+        "updatedByName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Synchronized audit trail of order, stock, and permission updates.",
+      "type": "object",
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["order", "stock", "access"]
+        },
+        "actionTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "actorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "actorRole": {
+          "type": "string",
+          "enum": ["admin", "staff", "viewer"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "category",
+        "actionTitle",
+        "detail",
+        "actorUid",
+        "actorName",
+        "actorRole",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Root workspace metadata document."
+    },
+    "/workspaces/{workspaceId}/members/{memberUid}": {
+      "schema": { "$ref": "#/entities/WorkspaceMember" },
+      "description": "Role-based access control entries for users in a workspace."
+    },
+    "/workspaces/{workspaceId}/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/OrderRecord" },
+      "description": "Synchronized order tracking records."
+    },
+    "/workspaces/{workspaceId}/stocks/{stockId}": {
+      "schema": { "$ref": "#/entities/StockItem" },
+      "description": "Synchronized inventory records (Ready & Keluar without dummy/trial)."
+    },
+    "/workspaces/{workspaceId}/activities/{activityId}": {
+      "schema": { "$ref": "#/entities/ActivityLog" },
+      "description": "Immutable synchronized activity log entries."
+    }
+  }
+}
