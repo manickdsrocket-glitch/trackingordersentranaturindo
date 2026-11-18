@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+﻿import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   User,
   onAuthStateChanged,
@@ -6,12 +6,11 @@ import {
   signOut,
   GoogleAuthProvider,
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { supabase } from '../supabaseClient';
 import {
   auth,
   SCOPES,
   createDriveConsentProvider,
-  db,
   getGoogleAccessToken,
   setGoogleAccessToken,
   getIsSigningIn,
@@ -85,13 +84,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setRole('admin');
         } else {
           try {
-            const adminDocRef = doc(db, 'admins', currentUser.uid);
-            const adminSnap = await getDoc(adminDocRef);
-            if (adminSnap.exists()) {
+            const { data: memberRow } = await supabase
+              .from('members')
+              .select('role')
+              .or(`uid.eq.${currentUser.uid},email.eq.${emailLower}`)
+              .maybeSingle();
+            if (memberRow?.role === 'admin') {
               setRole('admin');
               setIsBootstrapAdmin(true);
             } else {
-              setRole('staff');
+              setRole((memberRow?.role as UserRole) || 'staff');
             }
           } catch {
             setRole('staff');
@@ -248,7 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 onClick={() => setAuthErrorModal(null)}
                 className="text-slate-400 hover:text-slate-600 text-sm font-bold px-2 py-1 rounded-lg"
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -280,7 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 rel="noopener noreferrer"
                 className="w-full text-center px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold transition-colors"
               >
-                1. Buka Authorized Domains (Project ordertracking-223b6) ↗
+                1. Buka Authorized Domains (Project ordertracking-223b6) â†—
               </a>
               <a
                 href="https://console.cloud.google.com/apis/credentials/consent?project=ordertracking-223b6"
@@ -288,7 +290,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 rel="noopener noreferrer"
                 className="w-full text-center px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
               >
-                2. Buka OAuth Consent Screen & Klik &quot;PUBLISH APP&quot; ↗
+                2. Buka OAuth Consent Screen & Klik &quot;PUBLISH APP&quot; â†—
               </a>
             </div>
 
@@ -323,3 +325,4 @@ export const useAuth = () => {
   }
   return context;
 };
+
