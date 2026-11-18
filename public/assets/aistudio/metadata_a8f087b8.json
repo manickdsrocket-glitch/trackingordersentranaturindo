@@ -1,0 +1,8 @@
+{
+  "name": "Sentra Naturindo — Tracking Order & Stok Barang",
+  "description": "Aplikasi web pencatatan tracking order marketplace dan manajemen stok barang ready & keluar dengan peringatan batas minimum otomatis, riwayat sinkronisasi real-time, dan hak akses multi-pengguna.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
