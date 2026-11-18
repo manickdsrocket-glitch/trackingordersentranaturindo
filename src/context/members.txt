@@ -1,0 +1,5 @@
+INSERT INTO public.members (uid, workspace_id, email, display_name, role)
+VALUES
+  ('admin-1', 'sentra-naturindo', 'emailadmin@gmail.com', 'Admin Utama', 'admin'),
+  ('staff-1', 'sentra-naturindo', 'emailstaf1@gmail.com', 'Staf CS 1', 'staff'),
+  ('staff-2', 'sentra-naturindo', 'emailstaf2@gmail.com', 'Staf Packing', 'staff');
