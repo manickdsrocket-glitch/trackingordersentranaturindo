@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+﻿import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from './AuthContext';
 import {
@@ -238,9 +238,13 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setMembers(
           membersRes.data.map((m: any) => ({
             uid: m.uid,
+            workspaceId: m.workspace_id || 'sentra-naturindo',
             email: m.email || '',
             displayName: m.display_name || '',
             role: m.role || 'staff',
+            addedByUid: m.added_by_uid || '',
+            createdAt: toFirestoreLikeTimestamp(m.created_at) as any,
+            updatedAt: toFirestoreLikeTimestamp(m.updated_at || m.created_at) as any,
           }))
         );
       }
@@ -426,7 +430,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await logActivity(
       'order',
       `Order Baru Dibuat (${orderData.marketplace})`,
-      `${orderData.storeName} — ${orderData.productsSold} (Qty: ${orderData.quantity}) | Resi: ${orderData.noPemesanan} | Kurir: ${orderData.courier || '-'}`
+      `${orderData.storeName} â€” ${orderData.productsSold} (Qty: ${orderData.quantity}) | Resi: ${orderData.noPemesanan} | Kurir: ${orderData.courier || '-'}`
     );
     return orderId;
   };
@@ -646,7 +650,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     await logActivity(
       'stock',
       `Perubahan Data Stok`,
-      `${currentItem?.productName || stockId} — Stok Ready kini: ${stockReady}`
+      `${currentItem?.productName || stockId} â€” Stok Ready kini: ${stockReady}`
     );
   };
 
@@ -814,3 +818,4 @@ export const useWorkspace = () => {
   }
   return context;
 };
+
