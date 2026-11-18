@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   User,
   onAuthStateChanged,
@@ -93,10 +93,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setRole('admin');
               setIsBootstrapAdmin(true);
             } else {
-              setRole((memberRow?.role as UserRole) || 'staff');
+              setRole((memberRow?.role as UserRole) || 'viewer');
             }
           } catch {
-            setRole('staff');
+            setRole('viewer');
           }
         }
       } else {
