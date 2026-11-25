@@ -351,7 +351,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const currentStockIn = Number(matchedStock.stockIn) || 0;
         const currentStockOut = Number(matchedStock.stockOut) || 0;
         const nextStockOut = Math.max(0, currentStockOut + qtyDelta);
-        const nextStockReady = Math.max(0, currentStockIn - nextStockOut);
+        // Izinkan stok menjadi minus apabila stok keluar melebihi stok masuk
+        const nextStockReady = currentStockIn - nextStockOut;
 
         setStocks((prev) =>
           prev.map((s) =>
@@ -374,6 +375,51 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (!error) {
           summaryLogs.push(
             `${matchedStock.productName} (${qtyDelta > 0 ? `-${qtyDelta}` : `+${Math.abs(qtyDelta)}`} -> Sisa: ${nextStockReady})`
+          );
+        }
+      } else if (qtyDelta > 0) {
+        // Jika produk dari katalog belum ada barisnya di tabel stocks, buat otomatis dengan stockIn = 0 sehingga stockReady minus
+        const catMatch = NATURINDO_CATALOG.find(
+          (c) => String(c.name || '').trim().toLowerCase() === targetNameLower
+        );
+        const sku =
+          catMatch?.sku ||
+          `NAT-${name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-3)}`;
+        const stockId = `stk-${sku.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+        const nextStockReady = -qtyDelta;
+        const nowIso = new Date().toISOString();
+
+        const newRow = {
+          id: stockId,
+          workspace_id: workspaceId,
+          sku,
+          product_name: catMatch?.name || name,
+          category: catMatch?.category || 'Herbal Naturindo',
+          stock_in: 0,
+          stock_out: qtyDelta,
+          stock_ready: nextStockReady,
+          min_threshold: catMatch?.defaultMinThreshold || 3,
+          unit: 'Botol',
+          exp_tercepat: '2026-11',
+          exp_terlama: '2028-05',
+          last_restock_date: nowIso.split('T')[0],
+          author_id: user.uid,
+          updated_by_name: user.displayName || user.email || 'Staff',
+          created_at: nowIso,
+          updated_at: nowIso,
+        };
+
+        const { error } = await supabase.from('stocks').upsert(newRow);
+        if (!error) {
+          setStocks((prev) =>
+            [...prev.filter((s) => s.id !== stockId), mapRowToStock(newRow)].sort((a, b) =>
+              String(a.productName || '').localeCompare(String(b.productName || ''), 'id', {
+                sensitivity: 'base',
+              })
+            )
+          );
+          summaryLogs.push(
+            `${newRow.product_name} (-${qtyDelta} -> Sisa: ${nextStockReady})`
           );
         }
       }
@@ -577,7 +623,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   ) => {
     ensureAuthenticated();
     const stockId = `stk-${itemData.sku.toLowerCase().replace(/[^a-z0-9]/g, '-') || Date.now()}`;
-    const stockReady = Math.max(0, itemData.stockIn - itemData.stockOut);
+    const stockReady = itemData.stockIn - itemData.stockOut;
     const nowIso = new Date().toISOString();
 
     const dbRow = {
@@ -620,7 +666,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       updates.stockIn !== undefined ? updates.stockIn : currentItem?.stockIn || 0;
     const newStockOut =
       updates.stockOut !== undefined ? updates.stockOut : currentItem?.stockOut || 0;
-    const stockReady = Math.max(0, newStockIn - newStockOut);
+    const stockReady = newStockIn - newStockOut;
 
     setStocks((prev) =>
       prev
@@ -666,7 +712,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const stockIn = type === 'in' ? currentItem.stockIn + delta : currentItem.stockIn;
     const stockOut = type === 'out' ? currentItem.stockOut + delta : currentItem.stockOut;
-    const stockReady = Math.max(0, stockIn - stockOut);
+    // Ketika barang masuk (+delta), stockIn bertambah dan otomatis mengurangi nilai minus (stockIn - stockOut)
+    const stockReady = stockIn - stockOut;
     const today = new Date().toISOString().split('T')[0];
     const lastRestockDate = type === 'in' ? today : currentItem.lastRestockDate || today;
 
@@ -750,7 +797,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       const stockIn = item.defaultStock;
       const stockOut = existingItem ? Number(existingItem.stockOut) || 0 : 0;
-      const stockReady = Math.max(0, stockIn - stockOut);
+      const stockReady = stockIn - stockOut;
 
       return {
         id: stockId,
@@ -814,8 +861,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 export const useWorkspace = () => {
   const context = useContext(WorkspaceContext);
   if (!context) {
-    throw new Error('useWorkspace must be used within a WorkspaceProvider');
+    throw new Error('useWorkspace must be used within an AuthProvider');
   }
   return context;
 };
-

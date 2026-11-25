@@ -192,6 +192,10 @@ export const StocksView: React.FC<StocksViewProps> = ({
     (sum, s) => sum + Math.max(0, Number(s.stockReady) || 0),
     0
   );
+  const totalMinusBottles = stocks.reduce(
+    (sum, s) => sum + (Number(s.stockReady) < 0 ? Math.abs(Number(s.stockReady)) : 0),
+    0
+  );
 
   return (
     <div className="space-y-4">
@@ -220,6 +224,11 @@ export const StocksView: React.FC<StocksViewProps> = ({
               <span className="text-[11px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">
                 {stocks.length} Produk • {totalBottlesReady} Botol Ready
               </span>
+              {totalMinusBottles > 0 && (
+                <span className="text-[11px] font-bold bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-full border border-rose-200">
+                  Total Minus: -{totalMinusBottles} Botol
+                </span>
+              )}
               {sortField !== 'productName' && (
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-teal-50 text-teal-800 px-2.5 py-0.5 rounded-full border border-teal-200">
                   <span>
@@ -237,7 +246,7 @@ export const StocksView: React.FC<StocksViewProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Info kedaluwarsa (Exp Tercepat & Terlama) tampil langsung di tabel. Klik header kolom untuk mengurutkan.
+              Produk stok 0 tetap bisa diinput order (stok otomatis menjadi minus & berkurang minusnya saat restock masuk).
             </p>
           </div>
 
@@ -390,7 +399,7 @@ export const StocksView: React.FC<StocksViewProps> = ({
                   : 'bg-rose-50/70 hover:bg-rose-100 text-rose-800 border-rose-200'
               }`}
             >
-              Stok Kosong / 0 ({emptyStockCount})
+              Stok Kosong / Minus ({emptyStockCount})
             </button>
             <button
               type="button"
@@ -598,7 +607,7 @@ export const StocksView: React.FC<StocksViewProps> = ({
                         {item.stockOut}
                       </td>
 
-                      {/* Stok Ready */}
+                      {/* Stok Ready (Mendukung Nilai Minus) */}
                       <td className="py-3 px-3 text-center bg-emerald-50/40 whitespace-nowrap">
                         <span
                           className={`font-mono font-bold text-sm px-2.5 py-0.5 rounded-lg ${
@@ -618,7 +627,11 @@ export const StocksView: React.FC<StocksViewProps> = ({
                         {isOutOfStock ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
                             <XCircle className="w-3 h-3" />
-                            <span>Kosong (Disembunyikan di Input Order)</span>
+                            <span>
+                              {item.stockReady < 0
+                                ? `Minus (${item.stockReady}) • Tetap Bisa Order`
+                                : 'Kosong (0) • Tetap Bisa Order'}
+                            </span>
                           </span>
                         ) : isLowStock ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
@@ -643,7 +656,7 @@ export const StocksView: React.FC<StocksViewProps> = ({
                               }
                             }}
                             className="flex items-center gap-0.5 px-2 py-1 text-[11px] font-semibold rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-colors cursor-pointer"
-                            title="Tambah Stok Masuk (Restock)"
+                            title="Tambah Stok Masuk (Restock / Kurangi Minus)"
                           >
                             <ArrowUpRight className="w-3 h-3" />
                             <span>+ Masuk</span>

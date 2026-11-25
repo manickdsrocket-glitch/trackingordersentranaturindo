@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
   ShoppingBag,
@@ -202,7 +202,6 @@ export const OrderModal: React.FC<OrderModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Pastikan orderToEdit benar-benar objek OrderRecord (bukan Click Event dari tombol)
   const validOrderToEdit = useMemo<OrderRecord | undefined>(() => {
     if (
       orderToEdit &&
@@ -345,7 +344,8 @@ export const OrderModal: React.FC<OrderModalProps> = ({
         sku: String(s?.sku || existing?.sku || fallbackSku),
         name: existing?.name || cleanName,
         category: String(s?.category || existing?.category || 'Herbal Naturindo'),
-        stockReady: Math.max(0, Number(s?.stockReady) || 0),
+        // Tampilkan angka stok aktual termasuk jika minus
+        stockReady: Number(s?.stockReady) || 0,
         isCustomNew: !existing,
       });
     }
@@ -355,23 +355,21 @@ export const OrderModal: React.FC<OrderModalProps> = ({
     );
   }, [safeStocks]);
 
-  const readyCatalogProducts = useMemo(() => {
-    return unifiedCatalogWithStock;
-  }, [unifiedCatalogWithStock]);
-
-  const hiddenOutOfStockCount =
-    unifiedCatalogWithStock.length - readyCatalogProducts.length;
+  const outOfStockOrMinusCount = useMemo(
+    () => unifiedCatalogWithStock.filter((p) => p.stockReady <= 0).length,
+    [unifiedCatalogWithStock]
+  );
 
   const filteredCatalog = useMemo(() => {
-    if (!productSearch.trim()) return readyCatalogProducts;
+    if (!productSearch.trim()) return unifiedCatalogWithStock;
     const term = productSearch.toLowerCase().trim();
-    return readyCatalogProducts.filter(
+    return unifiedCatalogWithStock.filter(
       (cat) =>
         cat.name.toLowerCase().includes(term) ||
         cat.sku.toLowerCase().includes(term) ||
         cat.category.toLowerCase().includes(term)
     );
-  }, [productSearch, readyCatalogProducts]);
+  }, [productSearch, unifiedCatalogWithStock]);
 
   const getAvailableStockForProduct = (productName: string): number => {
     const clean = String(productName ?? '').trim().toLowerCase();
@@ -389,12 +387,13 @@ export const OrderModal: React.FC<OrderModalProps> = ({
           p.name.toLowerCase().includes(clean)
       );
 
-    return found ? Math.max(0, Number(found.stockReady) || 0) : 0;
+    return found ? Number(found.stockReady) || 0 : 0;
   };
 
+  // Tetap izinkan pemilihan produk walau stok 0 / minus
   const handleToggleProduct = (productName: string) => {
     setStockNotice('');
-    const maxStock = getAvailableStockForProduct(productName);
+    const availStock = getAvailableStockForProduct(productName);
 
     setSelectedItems((prev) => {
       const existsIndex = prev.findIndex(
@@ -402,20 +401,20 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       );
       let next: SelectedProductItem[];
       if (existsIndex >= 0) {
-        const currentQty = prev[existsIndex].qty;
-        if (!validOrderToEdit && currentQty + 1 > maxStock) {
+        const nextQty = prev[existsIndex].qty + 1;
+        if (availStock - nextQty < 0) {
           setStockNotice(
-            `Stok ${productName} hanya tersedia ${maxStock} botol ready.`
+            `Info: Stok ${productName} saat ini ${availStock} botol. Input tetap dilanjutkan (stok akan menjadi ${availStock - nextQty}).`
           );
-          return prev;
         }
         next = prev.map((item, idx) =>
-          idx === existsIndex ? { ...item, qty: item.qty + 1 } : item
+          idx === existsIndex ? { ...item, qty: nextQty } : item
         );
       } else {
-        if (!validOrderToEdit && maxStock <= 0) {
-          setStockNotice(`Stok ${productName} sedang kosong (0 botol).`);
-          return prev;
+        if (availStock <= 0) {
+          setStockNotice(
+            `Info: Stok ${productName} saat ini ${availStock} botol. Input tetap dilanjutkan (stok akan menjadi ${availStock - 1}).`
+          );
         }
         next = [...prev, { name: productName, qty: 1 }];
       }
@@ -428,18 +427,17 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
   const handleUpdateItemQty = (productName: string, delta: number) => {
     setStockNotice('');
-    const maxStock = getAvailableStockForProduct(productName);
+    const availStock = getAvailableStockForProduct(productName);
 
     setSelectedItems((prev) => {
       const next = prev
         .map((p) => {
           if (p.name.toLowerCase() === productName.toLowerCase()) {
             const newQty = p.qty + delta;
-            if (delta > 0 && !validOrderToEdit && newQty > maxStock) {
+            if (delta > 0 && availStock - newQty < 0) {
               setStockNotice(
-                `Stok ${productName} maksimal ${maxStock} botol ready.`
+                `Info: Stok ${productName} saat ini ${availStock} botol (stok akan menjadi ${availStock - newQty}).`
               );
-              return p;
             }
             return newQty > 0 ? { ...p, qty: newQty } : null;
           }
@@ -490,7 +488,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       return;
     }
 
-    const readyQty = Math.max(1, Number(newProductStock) || 1);
+    const readyQty = Math.max(0, Number(newProductStock) || 0);
     setAddingNewProductSaving(true);
     setStockNotice('');
     try {
@@ -718,35 +716,24 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       setIsOwnerManuallyEdited(false);
     }
 
+    // Masukkan semua produk yang terdeteksi dari resi walau stok 0 / minus
     if (params.produkItems && params.produkItems.length > 0) {
-      const inStockItems: SelectedProductItem[] = [];
-      const outOfStockNames: string[] = [];
+      const mappedItems: SelectedProductItem[] = params.produkItems.map((item) => ({
+        name: item.name,
+        qty: Math.max(1, Number(item.qty) || 1),
+      }));
 
-      for (const item of params.produkItems) {
-        const available = getAvailableStockForProduct(item.name);
-        if (available > 0) {
-          inStockItems.push({
-            name: item.name,
-            qty: Math.min(item.qty, available),
-          });
-        } else {
-          outOfStockNames.push(item.name);
-        }
-      }
+      setSelectedItems(mappedItems);
+      setProductsSold(formatProductsSummary(mappedItems));
+      setQuantity(mappedItems.reduce((acc, it) => acc + it.qty, 0));
 
-      if (inStockItems.length > 0) {
-        setSelectedItems(inStockItems);
-        setProductsSold(formatProductsSummary(inStockItems));
-        setQuantity(inStockItems.reduce((acc, it) => acc + it.qty, 0));
-      } else {
-        setSelectedItems([]);
-        setProductsSold('');
-        setQuantity(1);
-      }
+      const lowOrMinusNames = mappedItems
+        .filter((it) => getAvailableStockForProduct(it.name) < it.qty)
+        .map((it) => `${it.name} (Stok: ${getAvailableStockForProduct(it.name)})`);
 
-      if (outOfStockNames.length > 0) {
+      if (lowOrMinusNames.length > 0) {
         setStockNotice(
-          `Produk [${outOfStockNames.join(', ')}] terdeteksi di resi tetapi STOK KOSONG (0). Silakan pilih/input manual.`
+          `Info: Produk [${lowOrMinusNames.join(', ')}] stoknya 0/kurang dan otomatis akan tercatat minus saat order disimpan.`
         );
       }
     } else if (params.produkText && !productsSold) {
@@ -755,13 +742,13 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
     if (cleanOrder && cleanResi && cleanOrder !== cleanResi) {
       setScanSuccessMessage(
-        `Berhasil Terdeteksi â€” No. Pesanan: ${cleanOrder} | No. Resi: ${cleanResi}${
+        `Berhasil Terdeteksi — No. Pesanan: ${cleanOrder} | No. Resi: ${cleanResi}${
           resolvedCourier ? ` | Kurir: ${resolvedCourier}` : ''
         }`
       );
     } else if (cleanOrder) {
       setScanSuccessMessage(
-        `Berhasil Terdeteksi â€” No. Pesanan: ${cleanOrder}${
+        `Berhasil Terdeteksi — No. Pesanan: ${cleanOrder}${
           resolvedCourier ? ` | Kurir: ${resolvedCourier}` : ''
         }`
       );
@@ -1042,7 +1029,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
           detectedOrd ? `No. Pesanan: ${detectedOrd}` : (detectedRes ? `No. Resi: ${detectedRes}` : ''),
           cleanPdfStore ? `Toko: ${cleanPdfStore}` : '',
           cleanPdfKurir ? `Kurir: ${cleanPdfKurir}` : '',
-        ].filter(Boolean).join(' â€¢ ');
+        ].filter(Boolean).join(' • ');
 
         if (pdfSummary) {
           setScanSuccessMessage(`Berhasil terscan otomatis dari PDF: ${pdfSummary}`);
@@ -1177,7 +1164,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
         finalOrderId ? `No. Pesanan: ${finalOrderId}` : (finalResiNo ? `No. Resi: ${finalResiNo}` : ''),
         cleanImgStore ? `Toko: ${cleanImgStore}` : '',
         cleanImgKurir ? `Kurir: ${cleanImgKurir}` : '',
-      ].filter(Boolean).join(' â€¢ ');
+      ].filter(Boolean).join(' • ');
 
       if (extractedSummary) {
         setScanSuccessMessage(`Berhasil terscan otomatis: ${extractedSummary}`);
@@ -1781,7 +1768,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                               : 'bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border-slate-200'
                           }`}
                         >
-                          {isSelected && 'âœ“ '}
+                          {isSelected && '✓ '}
                           {owner}
                         </button>
                       );
@@ -1814,14 +1801,14 @@ export const OrderModal: React.FC<OrderModalProps> = ({
               <div>
                 <div className="flex items-center gap-2">
                   <label className="block font-bold text-slate-800 text-xs">
-                    Produk Terjual & Total Qty (Urut Aâ€“Z) *
+                    Produk Terjual & Total Qty (Urut A–Z) *
                   </label>
                   <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
-                    {readyCatalogProducts.length} Ready â€¢ {hiddenOutOfStockCount} Stok Kosong Disembunyikan
+                    {unifiedCatalogWithStock.length} Produk ({outOfStockOrMinusCount} Stok 0/Minus Tetap Bisa Dipilih)
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Produk dengan stok 0 otomatis disembunyikan. Setiap input order langsung memotong stok barang yang ada.
+                  Semua produk tetap dapat dipilih meskipun stok 0 (stok otomatis menjadi minus dan berkurang minusnya saat restock masuk).
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1850,7 +1837,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
               <div className="p-3 rounded-xl bg-white border border-emerald-300 shadow-2xs space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-emerald-950">
-                    Tambah Nama Produk Baru (Otomatis Masuk Stok & Urut Aâ€“Z)
+                    Tambah Nama Produk Baru (Otomatis Masuk Stok & Urut A–Z)
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
@@ -1867,9 +1854,9 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                     <div className="relative">
                       <input
                         type="number"
-                        min="1"
+                        min="0"
                         value={newProductStock}
-                        onChange={(e) => setNewProductStock(Math.max(1, parseInt(e.target.value) || 1))}
+                        onChange={(e) => setNewProductStock(Math.max(0, parseInt(e.target.value) || 0))}
                         className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-slate-900 font-mono font-bold text-xs"
                         placeholder="Stok Ready"
                       />
@@ -1915,11 +1902,13 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                         className="flex items-center gap-1.5 bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs shadow-xs text-slate-800"
                       >
                         <span className="font-bold text-emerald-950">{item.name}</span>
-                        {maxAvail < 999 && (
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            (Sisa: {maxAvail})
-                          </span>
-                        )}
+                        <span
+                          className={`text-[10px] font-mono ${
+                            maxAvail <= 0 ? 'text-rose-600 font-bold' : 'text-slate-500'
+                          }`}
+                        >
+                          (Stok: {maxAvail})
+                        </span>
                         <div className="flex items-center gap-1 bg-slate-100 rounded-md px-1 py-0.5 ml-1 border border-slate-200">
                           <button
                             type="button"
@@ -1963,7 +1952,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                   required
                   value={productsSold}
                   onChange={(e) => setProductsSold(e.target.value)}
-                  placeholder="Klik produk ready di bawah untuk mengisi otomatis..."
+                  placeholder="Klik produk di bawah untuk mengisi otomatis..."
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 font-medium text-xs focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
@@ -1993,7 +1982,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                   type="text"
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="Cari produk yang ready stok (urut Aâ€“Z, misal: Azzahra Premium, Cardlafit, Herbaslim GO)..."
+                  placeholder="Cari nama produk (urut A–Z, misal: Azzahra Premium, Cardlafit, Herbaslim GO)..."
                   className="w-full pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] text-slate-800 placeholder-slate-400"
                 />
                 {productSearch && (
@@ -2011,7 +2000,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
             <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1 pr-1">
               {filteredCatalog.length === 0 ? (
                 <div className="w-full py-4 text-center text-[11px] text-slate-500 bg-white rounded-lg border border-dashed border-slate-200">
-                  Tidak ada produk ready yang cocok dengan pencarian, atau stok sedang kosong (0). Klik <strong>+ Tambah Nama Produk Baru</strong> di atas jika ingin menambahkan produk baru.
+                  Tidak ada produk yang cocok dengan pencarian. Klik <strong>+ Tambah Nama Produk Baru</strong> di atas jika ingin menambahkan produk baru.
                 </div>
               ) : (
                 filteredCatalog.map((cat) => {
@@ -2021,6 +2010,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                   const selectedItem = selectedItems.find(
                     (p) => p.name.toLowerCase() === cat.name.toLowerCase()
                   );
+                  const isZeroOrMinus = cat.stockReady <= 0;
 
                   return (
                     <button
@@ -2030,6 +2020,8 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
                         isSelected
                           ? 'bg-emerald-600 text-white font-bold shadow-xs border border-emerald-700'
+                          : isZeroOrMinus
+                          ? 'bg-rose-50/60 hover:bg-rose-100/70 text-slate-700 border border-rose-200'
                           : 'bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200'
                       }`}
                     >
@@ -2038,14 +2030,20 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                           <Check className="w-3 h-3 text-white" />
                           <span>{cat.name}</span>
                           <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-800 text-emerald-100 font-mono">
-                            {selectedItem ? `${selectedItem.qty}/${cat.stockReady}` : cat.stockReady}
+                            {selectedItem ? `${selectedItem.qty}x (Stok: ${cat.stockReady})` : cat.stockReady}
                           </span>
                         </>
                       ) : (
                         <>
                           <Plus className="w-3 h-3 text-slate-400" />
                           <span>{cat.name}</span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200/80">
+                          <span
+                            className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                              isZeroOrMinus
+                                ? 'bg-rose-100 text-rose-700 border-rose-200 font-bold'
+                                : 'bg-slate-100 text-slate-600 border-slate-200/80'
+                            }`}
+                          >
                             {cat.stockReady}
                           </span>
                         </>
@@ -2378,4 +2376,3 @@ export const OrderModal: React.FC<OrderModalProps> = ({
     </div>
   );
 };
-

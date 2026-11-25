@@ -83,7 +83,8 @@ export const StockModal: React.FC<StockModalProps> = ({
     }
   };
 
-  const calculatedReady = Math.max(0, (Number(stockIn) || 0) - (Number(stockOut) || 0));
+  // Izinkan hasil minus apabila stok keluar melebihi stok masuk
+  const calculatedReady = (Number(stockIn) || 0) - (Number(stockOut) || 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,7 +157,7 @@ export const StockModal: React.FC<StockModalProps> = ({
                 {stockToEdit ? 'Edit Data Master SKU Stok' : 'Tambah Master Produk Herbal'}
               </h2>
               <p className="text-xs text-slate-500">
-                Inventaris Sentra Naturindo: Stok Ready dihitung otomatis dari Stok Masuk dikurangi Stok Keluar.
+                Inventaris Sentra Naturindo: Stok Ready dihitung otomatis dari Stok Masuk dikurangi Stok Keluar (mendukung nilai minus).
               </p>
             </div>
           </div>
@@ -274,10 +275,16 @@ export const StockModal: React.FC<StockModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-emerald-800 mb-1 text-center">
+              <label className={`block font-bold mb-1 text-center ${calculatedReady < 0 ? 'text-rose-800' : 'text-emerald-800'}`}>
                 Stok Ready
               </label>
-              <div className="w-full py-2 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono font-extrabold text-center text-sm">
+              <div
+                className={`w-full py-2 rounded-xl border font-mono font-extrabold text-center text-sm ${
+                  calculatedReady < 0
+                    ? 'bg-rose-100 border-rose-300 text-rose-900'
+                    : 'bg-emerald-100 border-emerald-300 text-emerald-900'
+                }`}
+              >
                 {calculatedReady} {unit}
               </div>
             </div>
