@@ -228,7 +228,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       setMarketplace((validOrderToEdit.marketplace || 'Shopee') as MarketplaceType);
       setNoPemesanan(String(validOrderToEdit.noPemesanan || ''));
       setCourier(String(validOrderToEdit.courier || 'J&T Express'));
-      const rawProducts = String(validOrderToEdit.productsSold || '');
+      const rawProducts = String(validOrderToEdit.productsSold || '').trim();
       const editQty = Number(validOrderToEdit.quantity) || 1;
       setProductsSold(rawProducts);
       setQuantity(editQty);
@@ -254,9 +254,15 @@ export const OrderModal: React.FC<OrderModalProps> = ({
           typeof parseProductsSoldString === 'function'
             ? parseProductsSoldString(rawProducts, editQty)
             : [];
-        setSelectedItems(Array.isArray(parsedFromOrder) ? parsedFromOrder : []);
+        if (Array.isArray(parsedFromOrder) && parsedFromOrder.length > 0) {
+          setSelectedItems(parsedFromOrder);
+        } else if (rawProducts) {
+          setSelectedItems([{ name: rawProducts, qty: editQty }]);
+        } else {
+          setSelectedItems([]);
+        }
       } catch {
-        setSelectedItems([]);
+        setSelectedItems(rawProducts ? [{ name: rawProducts, qty: editQty }] : []);
       }
     } else {
       const defaultStore = 'Sentra Naturindo Official';
@@ -344,7 +350,6 @@ export const OrderModal: React.FC<OrderModalProps> = ({
         sku: String(s?.sku || existing?.sku || fallbackSku),
         name: existing?.name || cleanName,
         category: String(s?.category || existing?.category || 'Herbal Naturindo'),
-        // Tampilkan angka stok aktual termasuk jika minus
         stockReady: Number(s?.stockReady) || 0,
         isCustomNew: !existing,
       });
@@ -390,7 +395,6 @@ export const OrderModal: React.FC<OrderModalProps> = ({
     return found ? Number(found.stockReady) || 0 : 0;
   };
 
-  // Tetap izinkan pemilihan produk walau stok 0 / minus
   const handleToggleProduct = (productName: string) => {
     setStockNotice('');
     const availStock = getAvailableStockForProduct(productName);
@@ -556,7 +560,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       const data = await res.json();
       if (
         data &&
-        (data.noPesanan || data.noResi || data.kurir || data.namaToko || data.pengirim)
+        (data.noPesanan || data.noResi || data.kurir || data.namaToko || data.pengirim || data.produk)
       ) {
         return data;
       }
@@ -594,9 +598,9 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
     if (/print\s*time|20\d{2}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]20\d{2}|banten|tangerang/i.test(rawStore)) {
       const stripped = rawStore
-        .replace(/print\s*time\s*[:ï¼š\-]?\s*[\d\-/:\s]+/gi, '')
+        .replace(/print\s*time\s*[:：\-]?\s*[\d\-/:\s]+/gi, '')
         .replace(/\b(?:banten|kabupaten|kota|tangerang|cipondoh|penerima|pengirim)\b.*/gi, '')
-        .replace(/[:ï¼š\-|]+$/g, '')
+        .replace(/[:：\-|]+$/g, '')
         .trim();
       if (stripped.length < 3) return '';
       return stripped;
@@ -604,7 +608,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
 
     const cleaned = rawStore
       .split(/\b(?:penerima|pengirim|berat|kg|jumlah|qty|pcs|tanggal|order|resi|print\s*time|\d{2}[-/]\d{2}[-/]\d{4})\b/i)[0]
-      .replace(/[:ï¼š\-|]+$/g, '')
+      .replace(/[:：\-|]+$/g, '')
       .trim();
 
     return cleaned.length >= 3 ? cleaned : '';
@@ -716,18 +720,31 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       setIsOwnerManuallyEdited(false);
     }
 
-    // Masukkan semua produk yang terdeteksi dari resi walau stok 0 / minus
+    // Sinkronkan produk terdeteksi dari array produkItems maupun string produkText
+    let resolvedItems: SelectedProductItem[] = [];
     if (params.produkItems && params.produkItems.length > 0) {
-      const mappedItems: SelectedProductItem[] = params.produkItems.map((item) => ({
-        name: item.name,
+      resolvedItems = params.produkItems.map((item) => ({
+        name: String(item.name || '').trim(),
         qty: Math.max(1, Number(item.qty) || 1),
-      }));
+      })).filter((it) => Boolean(it.name));
+    } else if (params.produkText && params.produkText.trim()) {
+      const parsedFallback =
+        typeof parseProductsSoldString === 'function'
+          ? parseProductsSoldString(params.produkText.trim(), 1)
+          : [];
+      if (Array.isArray(parsedFallback) && parsedFallback.length > 0) {
+        resolvedItems = parsedFallback;
+      } else {
+        resolvedItems = [{ name: params.produkText.trim(), qty: 1 }];
+      }
+    }
 
-      setSelectedItems(mappedItems);
-      setProductsSold(formatProductsSummary(mappedItems));
-      setQuantity(mappedItems.reduce((acc, it) => acc + it.qty, 0));
+    if (resolvedItems.length > 0) {
+      setSelectedItems(resolvedItems);
+      setProductsSold(formatProductsSummary(resolvedItems));
+      setQuantity(resolvedItems.reduce((acc, it) => acc + it.qty, 0));
 
-      const lowOrMinusNames = mappedItems
+      const lowOrMinusNames = resolvedItems
         .filter((it) => getAvailableStockForProduct(it.name) < it.qty)
         .map((it) => `${it.name} (Stok: ${getAvailableStockForProduct(it.name)})`);
 
@@ -736,8 +753,6 @@ export const OrderModal: React.FC<OrderModalProps> = ({
           `Info: Produk [${lowOrMinusNames.join(', ')}] stoknya 0/kurang dan otomatis akan tercatat minus saat order disimpan.`
         );
       }
-    } else if (params.produkText && !productsSold) {
-      setProductsSold(params.produkText);
     }
 
     if (cleanOrder && cleanResi && cleanOrder !== cleanResi) {
@@ -1190,7 +1205,9 @@ export const OrderModal: React.FC<OrderModalProps> = ({
       return;
     }
 
-    if (!storeName.trim() || !productsSold.trim() || !noPemesanan.trim()) {
+    const finalProductsString = (productsSold.trim() || formatProductsSummary(selectedItems)).trim();
+
+    if (!storeName.trim() || !finalProductsString || !noPemesanan.trim()) {
       setErrorMsg('Harap lengkapi Nama Toko, No. Resi / Pemesanan, dan Produk Terjual.');
       return;
     }
@@ -1232,7 +1249,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
         noResi: detectedResiNo.trim() || '',
         resiFileData: uploadedImagePreview || '',
         resiFileName: resiFileName.trim() || '',
-        productsSold: productsSold.trim(),
+        productsSold: finalProductsString,
         quantity: Number(quantity) || 1,
         checklistComplete,
         shippingStatus,
@@ -1306,7 +1323,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
             </div>
           )}
 
-          {/* Section: Upload & Scan Resi Ekspedisi + Google Drive Folder Integration */}
+          {/* Section: Upload & Scan Resi Ekspedisi */}
           <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200/90 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -1457,7 +1474,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
             )}
           </div>
 
-          {/* Row 1: No. Pemesanan/Order ID & Kurir yang digunakan */}
+          {/* Row 1: No. Pemesanan/Order ID & Kurir */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
@@ -1951,8 +1968,14 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                   type="text"
                   required
                   value={productsSold}
-                  onChange={(e) => setProductsSold(e.target.value)}
-                  placeholder="Klik produk di bawah untuk mengisi otomatis..."
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setProductsSold(val);
+                    if (!val.trim()) {
+                      setSelectedItems([]);
+                    }
+                  }}
+                  placeholder="Klik produk di bawah atau ketik nama produk..."
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-900 font-medium text-xs focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
@@ -1982,7 +2005,7 @@ export const OrderModal: React.FC<OrderModalProps> = ({
                   type="text"
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="Cari nama produk (urut A–Z, misal: Azzahra Premium, Cardlafit, Herbaslim GO)..."
+                  placeholder="Cari nama produk (urut A–Z, misal: Azzahra Premium, Cardiafit, Herbaslim GO)..."
                   className="w-full pl-8 pr-7 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] text-slate-800 placeholder-slate-400"
                 />
                 {productSearch && (

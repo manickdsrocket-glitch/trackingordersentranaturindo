@@ -75,7 +75,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     return true;
   };
 
-  // Daftar unik pemilik toko (dari preset default & data order live)
+  // Daftar unik pemilik toko
   const availableOwners = useMemo(() => {
     const list = new Set<string>(GSHEET_DEFAULT_OWNERS || []);
     if (DEFAULT_STORE_OWNER_MAP) {
@@ -92,10 +92,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     );
   }, [orders]);
 
+  // Helper mengambil nama produk dengan fallback aman
+  const resolveOrderProductLabel = (order: OrderRecord): string => {
+    const raw = String(order.productsSold || (order as any).products_sold || '').trim();
+    return raw;
+  };
+
   // Filtered orders
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       const orderOwner = (order.ownerName || getDefaultOwnerForStore(order.storeName, orders) || '').trim();
+      const prodText = resolveOrderProductLabel(order);
 
       // Search
       const searchMatch =
@@ -104,27 +111,23 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         order.storeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         orderOwner.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order.courier || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.productsSold.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        prodText.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order.notes || '').toLowerCase().includes(searchTerm.toLowerCase());
 
       if (!searchMatch) return false;
 
-      // Filter Pemilik Toko
       if (selectedOwner !== 'all' && orderOwner.toLowerCase() !== selectedOwner.toLowerCase()) {
         return false;
       }
 
-      // Marketplace
       if (selectedMarketplace !== 'all' && order.marketplace !== selectedMarketplace) {
         return false;
       }
 
-      // Shipping Status
       if (selectedShippingStatus !== 'all' && order.shippingStatus !== selectedShippingStatus) {
         return false;
       }
 
-      // Checklist Packing Status
       if (selectedPackingStatus === 'selesai' && !order.checklistComplete) {
         return false;
       }
@@ -132,7 +135,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         return false;
       }
 
-      // BRI Status
       if (selectedBriStatus === 'cair' && !order.disbursedToBri && order.disbursementStatus !== 'Sudah cair') {
         return false;
       }
@@ -140,7 +142,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         return false;
       }
 
-      // Rentang Tanggal Order (Dari Tanggal - Sampai Tanggal)
       if (startDate && order.orderDate && order.orderDate < startDate) {
         return false;
       }
@@ -293,7 +294,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Read-Only Notice if unauthenticated */}
+      {/* Read-Only Notice */}
       {!user && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between text-xs text-amber-900 shadow-xs">
           <div className="flex items-center gap-2">
@@ -548,13 +549,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             </button>
           </div>
 
-          {/* Indikator Total Order & Total Qty (Bersih) */}
           <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
             <span className="text-slate-500">
               Menampilkan <strong className="text-slate-800">{filteredOrders.length}</strong> dari {orders.length} order
             </span>
 
-            {/* Badge Total Qty Bersih */}
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold shadow-2xs">
               <span className="text-[11px] text-emerald-700">Total Qty:</span>
               <span className="text-sm font-mono text-emerald-950 font-extrabold">
@@ -563,7 +562,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               <span className="text-[10px] text-emerald-600 font-normal">botol/item</span>
             </span>
 
-            {/* Info Pengurangan Batal & Retur */}
             {totalQtyCanceledOrReturned > 0 && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[11px]"
@@ -656,7 +654,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 <th className="py-3 px-3 whitespace-nowrap">Drop Off</th>
                 <th
                   className="py-3 px-3 text-center whitespace-nowrap"
-                  title="Hitungan hari proses pencairan sejak drop off sampai dana berhasil dicairkan atau bukti diunggah (berhenti otomatis saat sudah cair)"
+                  title="Hitungan hari proses pencairan sejak drop off sampai dana berhasil dicairkan atau bukti diunggah"
                 >
                   Proses Pencairan
                 </th>
@@ -685,6 +683,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   const hasResiFile = Boolean(order.resiFileData || order.drivePrintUrl);
                   const displayOwner = (order.ownerName || getDefaultOwnerForStore(order.storeName, orders) || '').trim();
                   const isCanceledOrReturned = order.shippingStatus === 'Retur' || order.shippingStatus === 'Dibatalkan';
+                  const productLabel = resolveOrderProductLabel(order);
 
                   return (
                     <tr
@@ -788,11 +787,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         </span>
                       </td>
 
-                      {/* Produk Terjual */}
-                      <td className="py-3 px-3 max-w-[200px]" title={order.productsSold}>
-                        <div className="font-medium text-slate-900 truncate">
-                          {order.productsSold}
-                        </div>
+                      {/* Produk Terjual (dengan fallback jelas jika kosong) */}
+                      <td className="py-3 px-3 max-w-[220px]" title={productLabel || 'Klik untuk isi nama produk'}>
+                        {productLabel ? (
+                          <div className="font-semibold text-slate-900 line-clamp-2 leading-snug">
+                            {productLabel}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onOpenOrderModal(order)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-semibold cursor-pointer"
+                          >
+                            <span>+ Isi Nama Produk</span>
+                          </button>
+                        )}
                         {order.notes && (
                           <div className="text-[10px] text-slate-400 truncate mt-0.5 italic">
                             Catatan: {order.notes}
