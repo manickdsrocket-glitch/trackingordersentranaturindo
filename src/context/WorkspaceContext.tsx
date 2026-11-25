@@ -204,7 +204,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           .select('*')
           .eq('workspace_id', workspaceId)
           .order('created_at', { ascending: false })
-          .limit(60),
+          .limit(200),
         supabase
           .from('members')
           .select('*')
@@ -303,7 +303,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       actorRole: role,
       createdAt: toFirestoreLikeTimestamp(nowIso) as any,
     };
-    setActivities((prev) => [optimisticLog, ...prev.slice(0, 59)]);
+    setActivities((prev) => [optimisticLog, ...prev.slice(0, 199)]);
 
     try {
       await supabase.from('activities').insert({
@@ -351,7 +351,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const currentStockIn = Number(matchedStock.stockIn) || 0;
         const currentStockOut = Number(matchedStock.stockOut) || 0;
         const nextStockOut = Math.max(0, currentStockOut + qtyDelta);
-        // Izinkan stok menjadi minus apabila stok keluar melebihi stok masuk
         const nextStockReady = currentStockIn - nextStockOut;
 
         setStocks((prev) =>
@@ -378,7 +377,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           );
         }
       } else if (qtyDelta > 0) {
-        // Jika produk dari katalog belum ada barisnya di tabel stocks, buat otomatis dengan stockIn = 0 sehingga stockReady minus
         const catMatch = NATURINDO_CATALOG.find(
           (c) => String(c.name || '').trim().toLowerCase() === targetNameLower
         );
@@ -712,7 +710,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const stockIn = type === 'in' ? currentItem.stockIn + delta : currentItem.stockIn;
     const stockOut = type === 'out' ? currentItem.stockOut + delta : currentItem.stockOut;
-    // Ketika barang masuk (+delta), stockIn bertambah dan otomatis mengurangi nilai minus (stockIn - stockOut)
     const stockReady = stockIn - stockOut;
     const today = new Date().toISOString().split('T')[0];
     const lastRestockDate = type === 'in' ? today : currentItem.lastRestockDate || today;
