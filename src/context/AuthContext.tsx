@@ -9,7 +9,6 @@ import {
 import { supabase } from '../supabaseClient';
 import {
   auth,
-  SCOPES,
   createDriveConsentProvider,
   getGoogleAccessToken,
   setGoogleAccessToken,
@@ -86,23 +85,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             const { data: memberRow } = await supabase
               .from('members')
-              .select('role')
+              .select('uid, role')
               .or(`uid.eq.${currentUser.uid},email.eq.${emailLower}`)
               .maybeSingle();
+
             if (memberRow?.role === 'admin') {
               setRole('admin');
               setIsBootstrapAdmin(true);
             } else {
-              setRole((memberRow?.role as UserRole) || 'viewer');
+              // Pastikan semua akun login non-admin langsung berstatus 'staff'
+              setRole('staff');
+              if (memberRow && memberRow.role === 'viewer') {
+                await supabase
+                  .from('members')
+                  .update({ role: 'staff', updated_at: new Date().toISOString() })
+                  .eq('uid', memberRow.uid);
+              }
             }
           } catch {
-            setRole('viewer');
+            setRole('staff');
           }
         }
       } else {
         setGoogleAccessToken(null);
         setDriveAccessToken(null);
-        setRole('viewer');
+        setRole('staff');
         setIsBootstrapAdmin(false);
       }
       setLoading(false);
@@ -171,7 +178,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let hasDrive = await verifyTokenHasDriveScope(token);
       if (!hasDrive && !forceConsent) {
-        // Retry once with explicit consent prompt if the user hasn't ticked the Drive checkbox yet
         const consentProvider = createDriveConsentProvider(auth.currentUser?.email, true);
         const retryResult = await signInWithPopup(auth, consentProvider);
         const retryCred = GoogleAuthProvider.credentialFromResult(retryResult);
@@ -250,7 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 onClick={() => setAuthErrorModal(null)}
                 className="text-slate-400 hover:text-slate-600 text-sm font-bold px-2 py-1 rounded-lg"
               >
-                âœ•
+                ✕
               </button>
             </div>
 
@@ -282,7 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 rel="noopener noreferrer"
                 className="w-full text-center px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold transition-colors"
               >
-                1. Buka Authorized Domains (Project ordertracking-223b6) â†—
+                1. Buka Authorized Domains (Project ordertracking-223b6) ↗
               </a>
               <a
                 href="https://console.cloud.google.com/apis/credentials/consent?project=ordertracking-223b6"
@@ -290,7 +296,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 rel="noopener noreferrer"
                 className="w-full text-center px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-semibold transition-colors"
               >
-                2. Buka OAuth Consent Screen & Klik &quot;PUBLISH APP&quot; â†—
+                2. Buka OAuth Consent Screen & Klik &quot;PUBLISH APP&quot; ↗
               </a>
             </div>
 
@@ -325,4 +331,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
