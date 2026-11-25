@@ -556,10 +556,20 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     }
 
+    const mergedStore = (updates.storeName ?? existingOrder?.storeName ?? '').trim();
+    const mergedProducts = (updates.productsSold ?? existingOrder?.productsSold ?? '').trim();
+    const mergedQty = updates.quantity ?? existingOrder?.quantity ?? 1;
+    const mergedStatus = updates.shippingStatus ?? existingOrder?.shippingStatus ?? 'Updated';
+    const mergedResi = (updates.noPemesanan ?? existingOrder?.noPemesanan ?? '-').trim();
+    const mergedCourier = (updates.courier ?? existingOrder?.courier ?? '-').trim();
+    const productPrefix = mergedProducts
+      ? `${mergedStore ? `${mergedStore} — ` : ''}${mergedProducts} (Qty: ${mergedQty}) | `
+      : '';
+
     await logActivity(
       'order',
       `Order Diperbarui (${orderId})`,
-      `Status: ${updates.shippingStatus || 'Updated'} | Resi: ${updates.noPemesanan || '-'} | Kurir: ${updates.courier || '-'}`
+      `${productPrefix}Status: ${mergedStatus} | Resi: ${mergedResi} | Kurir: ${mergedCourier}`
     );
   };
 
@@ -591,10 +601,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     }
 
+    const deletedProdInfo = existingOrder?.productsSold
+      ? ` — ${existingOrder.productsSold} (Qty: ${existingOrder.quantity || 1})`
+      : '';
+
     await logActivity(
       'order',
       `Order Dihapus`,
-      `ID Order: ${existingOrder?.noPemesanan || orderId} telah dihapus dari sistem & stok dikembalikan`
+      `ID Order: ${existingOrder?.noPemesanan || orderId}${deletedProdInfo} telah dihapus dari sistem & stok dikembalikan`
     );
   };
 

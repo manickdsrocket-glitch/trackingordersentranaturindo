@@ -2,28 +2,60 @@ import React, { useState, useMemo } from 'react';
 import {
   Clock,
   Search,
-  Filter,
   ShoppingBag,
   Boxes,
   ShieldAlert,
   User,
-  ShieldCheck,
   CheckCircle,
+  X,
 } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext';
+import { ActivityLog } from '../types';
 
 export const ActivitiesView: React.FC = () => {
-  const { activities, workspaceId } = useWorkspace();
+  const { activities, orders, workspaceId } = useWorkspace();
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
+  // Lengkapi detail log lama yang belum mencantumkan nama produk
+  const enrichedActivities = useMemo(() => {
+    return activities.map((act: ActivityLog) => {
+      if (act.category !== 'order') return act;
+
+      const combined = `${act.actionTitle} ${act.detail}`;
+      const orderIdMatch = combined.match(/\((ord-[a-z0-9-]+)\)/i);
+      const resiMatch = act.detail.match(/Resi:\s*([^\s|]+)/i);
+      const resiVal = resiMatch && resiMatch[1] !== '-' ? resiMatch[1].trim() : '';
+
+      const matchedOrder = orders.find(
+        (o) =>
+          (orderIdMatch && o.id === orderIdMatch[1]) ||
+          (resiVal && (o.noPemesanan === resiVal || o.noResi === resiVal))
+      );
+
+      if (!matchedOrder || !matchedOrder.productsSold) return act;
+
+      // Jika detail sudah memuat nama produk, biarkan
+      if (act.detail.toLowerCase().includes(matchedOrder.productsSold.toLowerCase())) {
+        return act;
+      }
+
+      const prefix = `${matchedOrder.storeName ? `${matchedOrder.storeName} — ` : ''}${matchedOrder.productsSold} (Qty: ${matchedOrder.quantity || 1})`;
+      return {
+        ...act,
+        detail: `${prefix} | ${act.detail}`,
+      };
+    });
+  }, [activities, orders]);
+
   const filteredActivities = useMemo(() => {
-    return activities.filter((act) => {
+    const term = searchTerm.trim().toLowerCase();
+    return enrichedActivities.filter((act) => {
       const matchSearch =
-        searchTerm === '' ||
-        act.actionTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        act.detail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        act.actorName.toLowerCase().includes(searchTerm.toLowerCase());
+        term === '' ||
+        act.actionTitle.toLowerCase().includes(term) ||
+        act.detail.toLowerCase().includes(term) ||
+        act.actorName.toLowerCase().includes(term);
 
       if (!matchSearch) return false;
 
@@ -33,7 +65,7 @@ export const ActivitiesView: React.FC = () => {
 
       return true;
     });
-  }, [activities, searchTerm, categoryFilter]);
+  }, [enrichedActivities, searchTerm, categoryFilter]);
 
   return (
     <div className="space-y-4">
@@ -63,9 +95,19 @@ export const ActivitiesView: React.FC = () => {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Cari aktivitas, nama staff, atau detail catatan..."
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-700"
+              placeholder="Cari nama produk, resi, aktivitas, atau nama staff..."
+              className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-700"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Hapus pencarian"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 overflow-x-auto">
@@ -94,7 +136,11 @@ export const ActivitiesView: React.FC = () => {
         {filteredActivities.length === 0 ? (
           <div className="py-16 text-center text-slate-400 text-xs">
             <Clock className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-            <p className="font-medium">Tidak ada log aktivitas yang cocok.</p>
+            <p className="font-medium">
+              {searchTerm
+                ? `Tidak ada log aktivitas yang cocok dengan "${searchTerm}".`
+                : 'Tidak ada log aktivitas yang cocok.'}
+            </p>
           </div>
         ) : (
           <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
